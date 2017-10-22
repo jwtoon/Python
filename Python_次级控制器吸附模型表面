@@ -1,0 +1,71 @@
+import maya.cmds as mc
+
+# 创建毛发点
+def createFolicle(Geo, u, v, foliceNameBase):
+    folicle = mc.createNode("follicle", n = foliceNameBase + "Shape")
+    GeoShape = mc.listRelatives(Geo, s=True)[0]
+    folicleTrans = mc.listRelatives(folicle, p=True)[0]
+    
+    mc.connectAttr(GeoShape + ".outMesh", folicle + ".inputMesh")
+    mc.connectAttr(GeoShape + ".worldMatrix", folicle + ".inputWorldMatrix")
+    
+    mc.connectAttr(folicle + ".outRotate", folicleTrans + ".rotate")
+    mc.connectAttr(folicle + ".outTranslate", folicleTrans + ".translate")
+    
+    mc.setAttr(folicle + ".parameterU",u)
+    mc.setAttr(folicle + ".parameterV",v)
+    
+    return folicle,folicleTrans
+    
+
+# 查找控制器到模型最近点UV数值
+def findClosestUVcoordinate (Geo,obj):
+    closetPntOneMesh = mc.createNode("closestPointOnMesh")
+    GeoShape = mc.listRelatives(Geo, s=True)[0]
+    print GeoShape
+    mc.connectAttr(GeoShape + ".worldMesh", closetPntOneMesh + ".inMesh")
+    mc.connectAttr(GeoShape + ".worldMatrix", closetPntOneMesh + ".inputMatrix")
+    loc = mc.spaceLocator()[0]
+    mc.matchTransform(loc, obj)
+    mc.connectAttr(loc + ".translate",closetPntOneMesh + ".inPosition")
+    
+    u = mc.getAttr(closetPntOneMesh + ".result.parameterU")
+    v = mc.getAttr(closetPntOneMesh + ".result.parameterV")
+    
+    mc.delete(closetPntOneMesh)
+    mc.delete(loc)
+    
+    return u,v
+
+# 创建控制器跟随蒙皮
+def makeControllerFollowSkin(Geo,ctrl):
+    uv = findClosestUVcoordinate(Geo,ctrl)
+    folicleTran = createFolicle(Geo,uv[0],uv[1],"follicle_"+ Geo + "_" + ctrl)[1]
+    
+    mc.group(ctrl, n = ctrl + "_follow_grp")
+    mc.group(ctrl, n = ctrl + "_compensate_grp")
+    
+    followGrp = mc.group (ctrl, n = ctrl + "_follow_grp")
+    compensateGrp =mc.group(ctrl, n = ctrl + "_compensate_grp")
+    
+    mc.pointConstraint(folicleTran, followGrp, mo = True)
+    
+    mulitplyDivide = mc.createNode("multiplyDivide", n = ctrl + "_MD_compensate")
+    mc.connectAttr(ctrl + ".translate", mulitplyDivide + ".input1")
+    mc.connectAttr(mulitplyDivide + ".output" ,compensateGrp + ".translate" )
+    
+    mc.setAttr(mulitplyDivide + ".input2X", -1)
+    mc.setAttr(mulitplyDivide + ".input2Y", -1)  
+    mc.setAttr(mulitplyDivide + ".input2Z", -1)
+
+# 选择批量执行    
+def makeSelectedFollowSkin():
+    selection = mc.ls(sl = True)
+    for item in selection:
+        if item == selection[-1]:
+           continue
+        
+        geo = selection[-1]
+        makeControllerFollowSkin(geo, item)
+        
+makeSelectedFollowSkin()
